@@ -9,11 +9,19 @@ class PrivmsgCommand < Command
     end
   end
 
+  def append_command(command)
+	return false unless command.instance_of? self.class
+	return false unless command.target === @target
+	@message << "\n" + command.message
+	return true
+  end
+
   def valid?
     !!@target && !!@message && registered?
   end
 
   def execute!
+    $logger.info "execute_privmsg #{@target} -> #{message}"
     if !authenticated? && nickserv?
       handle_nickserv!
     else
@@ -34,6 +42,9 @@ class PrivmsgCommand < Command
   end
 
   protected
+
+  attr_reader :target
+  attr_reader :message
 
   def post_message(target)
     # match to /me command which is actually a PRIVMSG with special format

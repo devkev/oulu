@@ -17,6 +17,10 @@ class Command
     raise NotImplementedError.new("You need to override valid?")
   end
 
+  def append_command(command)
+    return false
+  end
+
   protected
 
   def self.register_command(cmd)

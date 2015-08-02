@@ -1,7 +1,8 @@
 class IrcConnection < EventMachine::Connection
   attr_accessor :nick, :email, :password, :real_name, :user_id, :channels, :last_ping_sent, :last_pong_received_at, :away_message, :client_ip, :client_port
 
-  include EM::Protocols::LineText2
+  #include EM::Protocols::LineText2
+  include MyLineText2
 
   def initialize(*args)
     super
@@ -46,29 +47,62 @@ class IrcConnection < EventMachine::Connection
     !!@nick && !!@email && !!@real_name
   end
 
-  def receive_line(data)
+  def receive_line(line)
+    receive_lines([line])
+  end
+
+  def receive_lines(lines)
+    lines.each { |line| line.chomp! }
+    #$logger.info "receive_lines #{lines}"
     begin
-      data.chomp!
-      parse_line(data)
+      parse_lines(lines)
     rescue => ex
-      $logger.error "Error parsing line:"
+      $logger.error "Error parsing lines:"
       $logger.error ex.to_s
       $logger.error ex.backtrace.join("\n")
     end
   end
 
-  def parse_line(data)
-    klass, args = IrcParser.parse(data)
-    return nil if klass.nil?
-    command = klass.new(self)
+  def parse_line(line)
+    parse_lines([line])
+  end
 
-    begin
-      command.set_data(args)
-    rescue => ex
-      $logger.error "Error setting arguments for #{command.class.to_s}"
-      $logger.debug "#{args.inspect} for #{command.inspect}"
+  def parse_lines(lines)
+    command = nil
+    lines.each do |line|
+
+      klass, args = IrcParser.parse(line)
+      next if klass.nil?
+      new_command = klass.new(self)
+
+      begin
+        new_command.set_data(args)
+      rescue => ex
+        $logger.error "Error setting arguments for #{new_command.class.to_s}"
+        $logger.debug "#{args.inspect} for #{new_command.inspect}"
+      end
+
+      appended = false
+      if not command.nil? then
+        # try to add to it
+        appended = command.append_command(new_command)
+      end
+
+      if not appended then
+        # ship the old one
+        execute_command(command) unless command.nil?
+
+        # make the new one be the current one
+        command = new_command
+      end
     end
 
+    # ship the final one
+    execute_command(command)
+  end
+
+  def execute_command(command)
+    return nil unless command
     return nil unless command.valid?
 
     begin
